@@ -1,49 +1,47 @@
-#
 # PS Script to check the event logs and find out the last reboot and shutdown reasons
 # Should also pick up if it is a request from APC
-#
-#
-#
-
+# expanded results to show the full event log entry for each one that is picked up
 
 
 # Function to get reboot and shutdown events
 function Get-RebootShutdownEvents {
-    $events = Get-WinEvent -LogName System | Where-Object { $_.Id -eq 1074 -or $_.Id -eq 1076 }
-    return $events
+    # Filter at the source for better performance and clarity
+    Get-WinEvent -FilterHashtable @{ LogName='System'; Id=@(1074,1076) } |
+    Sort-Object TimeCreated -Descending
 }
 
 # Function to parse event details
 function Parse-Event {
     param (
-        [Parameter(Mandatory=$true)]
-        [System.Diagnostics.Eventing.Reader.EventLogRecord]$event
+        [Parameter(Mandatory = $true)]
+        [System.Diagnostics.Eventing.Reader.EventLogRecord] $event
     )
-    $details = [PSCustomObject]@{
-        TimeGenerated = $event.TimeCreated
-        SourceName = $event.ProviderName
-        EventID = $event.Id
-        EventType = $event.LevelDisplayName
-        EventCategory = $event.TaskDisplayName
-        EventDescription = $event.Properties[0].Value
-        APCShutdown = $false
-    }
+    # Use the full rendered message
+    $msg = $event.Message
 
-    # Check if the shutdown was initiated by an APC UPS request
-    if ($event.Properties[0].Value -like "*APC*") {
-        $details.APCShutdown = $true
+    [PSCustomObject]@{
+        TimeGenerated   = $event.TimeCreated
+        SourceName      = $event.ProviderName
+        EventID         = $event.Id
+        EventType       = $event.LevelDisplayName
+        EventCategory   = $event.TaskDisplayName
+        EventDescription= $msg
+        APCShutdown     = ($msg -match 'APC')
     }
-
-    return $details
 }
 
 # Main script execution
 $events = Get-RebootShutdownEvents
-$parsedEvents = @()
-foreach ($event in $events) {
-    $parsedEvent = Parse-Event -event $event
-    $parsedEvents += $parsedEvent
-}
+$parsedEvents = foreach ($event in $events) { Parse-Event -event $event }
 
-# Output the results in a table format
-$parsedEvents | Format-Table -AutoSize
+# Output the results in a table format without truncation
+# (Out-String -Width forces PowerShell to render the full text)
+$parsedEvents |
+    Select-Object TimeGenerated, SourceName, EventID, EventType, EventCategory, APCShutdown, EventDescription |
+    Out-String -Width 4096 |
+    Write-Host
+
+# Optional: also export to CSV to preserve full text
+$csvPath = Join-Path $env:USERPROFILE 'Desktop\Reboot-Shutdown-Events.csv'
+$parsedEvents | Export-Csv -Path $csvPath -NoTypeInformation -Encoding UTF8
+Write
