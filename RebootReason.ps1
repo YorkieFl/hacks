@@ -40,8 +40,3 @@ $parsedEvents |
     Select-Object TimeGenerated, SourceName, EventID, EventType, EventCategory, APCShutdown, EventDescription |
     Out-String -Width 4096 |
     Write-Host
-
-# Optional: also export to CSV to preserve full text
-$csvPath = Join-Path $env:USERPROFILE 'Desktop\Reboot-Shutdown-Events.csv'
-$parsedEvents | Export-Csv -Path $csvPath -NoTypeInformation -Encoding UTF8
-Write
